@@ -18,11 +18,11 @@ public static class Program
 
     private readonly struct Sphere(float radius, in Vector3 center, in Vector3 emission, in Vector3 color, Material material)
     {
-        public Vector3 Center { get; } = center;
-        public float Radius { get; } = radius;
-        public Vector3 Emission { get; } = emission;
-        public Material Material { get; } = material;
-        public Vector3 Color { get; } = color;
+        public readonly Vector3 Center = center;
+        public readonly float Radius = radius;
+        public readonly Vector3 Emission = emission;
+        public readonly Material Material = material;
+        public readonly Vector3 Color = color;
 
         public float Intersect(in Ray ray)
         {
@@ -123,7 +123,7 @@ public static class Program
                 case Material.Reflective:
                 {
                     ray.Origin = x + eps * nl;
-                    ray.Direction -= n * 2f * Vector3.Dot(n, ray.Direction);
+                    ray.Direction = ray.Direction - n * 2f * Vector3.Dot(n, ray.Direction);
                     break;
                 }
                 case Material.Refractive:
@@ -163,7 +163,6 @@ public static class Program
                         ray.Direction = tDir;
                         f *= tr / (1f - rrThreshold);
                     }
-
                     break;
                 }
             }
@@ -179,11 +178,30 @@ public static class Program
         const int w = 1024, h = 768;
         var samples = args.Length > 0 ? int.Parse(args[0]) : 64;
         var c = new Vector3[w * h];
-        Action<int, Random> renderRow = (y, rng) =>
+        var cam = new Ray(new Vector3(50f, 52f, 295.6f), Vector3.Normalize(new Vector3(0f, -0.042612f, -1f)));
+        var cx = new Vector3(w * 0.5135f / h, 0f, 0f);
+        var cy = Vector3.Normalize(Vector3.Cross(cx, cam.Direction)) * 0.5135f;
+
+        var sw = Stopwatch.StartNew();
+        Parallel.For(0, h, y =>
         {
-            var cam = new Ray(new Vector3(50f, 52f, 295.6f), Vector3.Normalize(new Vector3(0f, -0.042612f, -1f)));
-            var cx = new Vector3(w * 0.5135f / h, 0f, 0f);
-            var cy = Vector3.Normalize(Vector3.Cross(cx, cam.Direction)) * 0.5135f;
+            var rng = new ThreadLocal<Random>(() => new Random(y));
+            Debug.Assert(rng.Value != null, "rng.Value != null");
+            RenderRow(y, rng.Value);
+        });
+        sw.Stop();
+        Console.WriteLine($"Elapsed time: {sw.Elapsed}");
+        using var f = File.CreateText("image.ppm");
+        f.Write($"P3\n{w} {h}\n255\n");
+        foreach (var pixel in c)
+        {
+            f.Write($"{ToInt(pixel.X)} {ToInt(pixel.Y)} {ToInt(pixel.Z)} ");
+        }
+
+        return;
+
+        void RenderRow(int y, Random rng)
+        {
             for (var x = 0; x < w; ++x)
             {
                 for (var sy = 0; sy < 2; ++sy)
@@ -197,30 +215,15 @@ public static class Program
                             var dx = r1 < 1f ? MathF.Sqrt(r1) - 1f : 1f - MathF.Sqrt(2f - r1);
                             var r2 = 2f * rng.NextSingle();
                             var dy = r2 < 1f ? MathF.Sqrt(r2) - 1f : 1f - MathF.Sqrt(2f - r2);
-                            var d = cx * (((sx + 0.5f + dx) / 2f + x) / w - 0.5f) +
-                                    cy * (((sy + 0.5f + dy) / 2f + y) / h - 0.5f) + cam.Direction;
-                            r += Radiance(new Ray(cam.Origin + d * 140f, Vector3.Normalize(d)), rng) * (1f / samples);
+                            var d = cam.Direction + cx * (((sx + 0.5f + dx) / 2f + x) / w - 0.5f) + cy * (((sy + 0.5f + dy) / 2f + y) / h - 0.5f);
+                            d = Vector3.Normalize(d);
+                            r += Radiance(new Ray(cam.Origin + 140f * d, d), rng) * (1f / samples);
                         }
 
                         c[x + (h - 1 - y) * w] += 0.25f * Vector3.Clamp(r, Vector3.Zero, Vector3.One);
                     }
                 }
             }
-        };
-        var sw = Stopwatch.StartNew();
-        Parallel.For(0, h, y =>
-        {
-            var rng = new ThreadLocal<Random>(() => new Random(y));
-            Debug.Assert(rng.Value != null, "rng.Value != null");
-            renderRow(y, rng.Value);
-        });
-        sw.Stop();
-        Console.WriteLine($"Elapsed time: {sw.Elapsed}");
-        using var f = File.CreateText("image.ppm");
-        f.Write($"P3\n{w} {h}\n255\n");
-        for (var i = 0; i < c.Length; ++i)
-        {
-            f.Write($"{ToInt(c[i].X)} {ToInt(c[i].Y)} {ToInt(c[i].Z)} ");
         }
     }
 }
