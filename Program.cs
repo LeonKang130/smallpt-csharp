@@ -30,10 +30,11 @@ public static class Program
             var f = ray.Origin - Center;
             var a = ray.Direction.LengthSquared();
             var b = -Vector3.Dot(f, ray.Direction);
-            var c = f.LengthSquared() - Radius * Radius;
-            var delta = Radius * Radius - (f + b / a * ray.Direction).LengthSquared();
+            var r2 = Radius * Radius;
+            var c = f.LengthSquared() - r2;
+            var delta = r2 - (f + b / a * ray.Direction).LengthSquared();
             if (delta < 0f) return 0f;
-            var q = b + MathF.Sign(b) * MathF.Sqrt(a * delta);
+            var q = b + MathF.CopySign(MathF.Sqrt(a * delta), b);
             var t0 = c / q;
             if (t0 > eps) return t0;
             var t1 = q / a;
@@ -123,7 +124,7 @@ public static class Program
                 case Material.Reflective:
                 {
                     ray.Origin = x + eps * nl;
-                    ray.Direction = ray.Direction - n * 2f * Vector3.Dot(n, ray.Direction);
+                    ray.Direction -= n * 2f * Vector3.Dot(n, ray.Direction);
                     break;
                 }
                 case Material.Refractive:
